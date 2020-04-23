@@ -1,3 +1,7 @@
+/*
+ * Author: Yuhang Liu <yuhang.liu.1@vanderbilt.edu>
+ */
+
 class TelloClient {
     #address;
     #port;
@@ -28,6 +32,8 @@ class TelloClient {
         const transaction_id = this.#transaction_counter++;
         const message = transaction_id + ' ' + mac_address + ' ' + drone_timeout + ' ' + command;
         this.#server_socket.send(Buffer.from(message), this.#port, this.#address);
+
+        // create promise and save its resolve callback
         var callbacks = this.#callbacks;
         return new Promise(function (resolve) {
             callbacks[transaction_id] = resolve;

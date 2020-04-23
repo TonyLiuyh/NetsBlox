@@ -1,5 +1,7 @@
 /*
  * Author: Yuhang Liu <yuhang.liu.1@vanderbilt.edu>
+ * 
+ * This file 
  */
 
 const TelloClient = require('./telloClient');
@@ -14,8 +16,7 @@ const setCommands = ['speed', 'rc', 'wifi'];
 
 const TelloService = {};
 
-// map from IP address to clientId
-var clientIds = {};
+
 // mapping from clientId to TelloClient
 var clients = {};
 // mapping from tello mac address to the clientId using it and the using time
