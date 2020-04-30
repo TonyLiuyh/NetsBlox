@@ -3,24 +3,21 @@
  */
 
 class TelloClient {
-    #address;
-    #port;
-    #clientId;
+    #rinfo;
     #server_socket;
     #transaction_counter;
     #callbacks;
 
-    constructor(address, port, clientId, server_socket) {
-        this.#address = address;
-        this.#port = port;
-        this.#clientId = clientId;
+    constructor(rinfo, server_socket) {
+        this.#rinfo = rinfo;
         this.#server_socket = server_socket;
         this.#transaction_counter = 1;
-        // mapping from transaction id to promise callback
         this.#callbacks = {};
     }
 
+    // is called when a message arrived
     onMessage(transaction_id, message) {
+        // resolve callback 
         var resolve = this.#callbacks[transaction_id];
         if (resolve != undefined) {
             delete this.#callbacks[transaction_id];
@@ -31,7 +28,7 @@ class TelloClient {
     send(mac_address, command, client_timeout, drone_timeout) {
         const transaction_id = this.#transaction_counter++;
         const message = transaction_id + ' ' + mac_address + ' ' + drone_timeout + ' ' + command;
-        this.#server_socket.send(Buffer.from(message), this.#port, this.#address);
+        this.#server_socket.send(Buffer.from(message), this.#rinfo.port, this.#rinfo.address);
 
         // create promise and save its resolve callback
         var callbacks = this.#callbacks;
@@ -45,19 +42,13 @@ class TelloClient {
             }, client_timeout);
         });
     }
-    
-    search() {
-        // then() gives the response from the client, which is a list of MAC 
-        // addresses separated by spaces
-        return this.send('0', 'search', 2000, 0);
-    }
 
     getAddress() {
-        return this.#address;
+        return this.#rinfo.address;
     }
 
     getPort() {
-        return this.#port;
+        return this.#rinfo.port;
     }
 }
 

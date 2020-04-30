@@ -17,28 +17,47 @@ const setCommands = ['speed', 'rc', 'wifi'];
 const TelloService = {};
 
 
-// mapping from clientId to TelloClient
+// dictionary of TelloClients, keyed by rinfo of their sockets
 var clients = {};
-// mapping from tello mac address to the clientId using it and the using time
+// mapping from tello mac address to the {tello client, clientId using it, expire time}
+// is a list of registered drones
 var drones = {}; 
 // create server socket
 var server_socket = dgram.createSocket('udp4');
 server_socket.bind(9001, '127.0.0.1')
 server_socket.on('message', (msg, rinfo) => {
+    if (clients[rinfo] == undefined) {
+        clients[rinfo] = new TelloClient(rinfo, server_socket);
+    }
+    var client = clients[rinfo];
     var tokens = msg.toString().split(' ');
     var transaction_id = parseInt(tokens[0]);
-    var client_id = tokens[1];
-    var response = '';
-    if (tokens.length >= 2) {
-        response += tokens[2];
-        for (let index = 3; index < tokens.length; index++) {
-            response += ' ' + tokens[index];
+    var operation = tokens[1];
+    // new drones to be registered
+    if (operation == 'add') {
+        for (let i = 2; i < tokens.length; ++i) {
+            if (tokens[i] != '' && drones[tokens[i]] == undefined) {
+                var drone = {};
+                drone.telloClient = client;
+                drone.clientId = '';
+                drone.expireTime = 0;
+                drones[tokens[i]] = drone;
+            }
         }
-    }
-    var client = clients[client_id];
-    if (transaction_id == 0) {
-        clients[client_id] = new TelloClient(rinfo.address, rinfo.port, client_id, server_socket);
-    } else if (client != undefined) {
+    } else if (operation == 'remove') { // remove inactive drones
+        for (let i = 2; i < tokens.length; ++i) {
+            if (tokens[i] != '') {
+                delete drones[tokens[i]];
+            }
+        }
+    } else if (operation == 'message') { // receive messages from drones
+        var response = '';
+        if (tokens.length >= 2) {
+            response += tokens[2];
+            for (let index = 3; index < tokens.length; index++) {
+                response += ' ' + tokens[index];
+            }
+        }
         client.onMessage(transaction_id, response);
     }
 });
@@ -53,20 +72,14 @@ server_socket.on('message', (msg, rinfo) => {
  */
 TelloService.send = function(mac_address, cmd) {
     var drone = drones[mac_address];
-    //const clientId = this.caller.clientId;
-    const clientId = '_test';
-    var tello_client = clients[clientId];
+    if (drone == undefined) {
+        return 'Error: cannot find the drone of this MAC address';
+    }
+    //var tello_client = drones[mac_address].telloClient;
+    var clientId = this.caller.clientId;
     var now = new Date();
     const current_time = now.getTime();
 
-    // make sure the client is registered
-    if (tello_client == undefined) {
-        return 'Error: unregistered client';
-    }
-    // make sure the drone of the MAC address is registered on server
-    if (drone == undefined) {
-        return 'Error: unknown MAC address';
-    }
     // make sure this client has access to this drone
     if (drone.clientId != clientId) {
         if (drone.expireTime < current_time) {
@@ -98,7 +111,7 @@ TelloService.send = function(mac_address, cmd) {
     }
 
     // send to client
-    return tello_client.send(mac_address, cmd, client_timeout, drone_timeout).then();
+    return drones[mac_address].telloClient.send(mac_address, cmd, client_timeout, drone_timeout).then();
 }
 
 /**
@@ -106,27 +119,9 @@ TelloService.send = function(mac_address, cmd) {
  * 
  * @return {Array<String>} an array of addresses
  */
-TelloService.search = async function() {
-    //var client = clients[this.caller.clientId];
-    var client = clients['_test'];
-    if (client) {
-        var promise = await client.search();
-        var search_result = promise.split(' ');
-        if (search_result[0] != 'Error:') {
-            for (let i = 0; i < search_result.length; ++i) {
-                const mac_address = search_result[i];
-                if (drones[mac_address] == undefined) {
-                    var drone = {};
-                    drone.clientId = '';
-                    drone.expireTime = 0;
-                    drones[mac_address] = drone;
-                }
-            }
-        }
-        return search_result;
-    } else {
-        return 'Error: unregistered client';
-    }
+TelloService.search = function() {
+    // directly return all elements in drones
+    return Object.keys(drones);
 }
 
 /**
@@ -142,10 +137,10 @@ TelloService.requestControl = function(mac_address, time) {
     const now = new Date();
     const current_time = now.getTime();
     // const client_id = this.caller.clientId;
-    const client_id = '_test';
-    if (drone) {
-        //if (drone.clientId == '' || drone.clientId == this.caller.clientId || drone.expireTime < current_time) {
-        if (drone.clientId == '' || client_id == '_test' || drone.expireTime < current_time) {
+    const client_id = this.caller.clientId;
+    if (drone != undefined) {
+        // if nobody takes this drone or it is already taken by this client
+        if (drone.clientId == '' || drone.clientId == client_id || drone.expireTime < current_time) {
             drone.clientId = client_id;
             drone.expireTime = current_time + time * 1000;
             return 'OK';
